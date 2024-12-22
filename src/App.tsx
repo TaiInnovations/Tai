@@ -66,23 +66,41 @@ function AppContent() {
 
   // 发送消息
   const handleSend = async () => {
-    if (!input.trim() || !activeConversation) return;
+    if (!input.trim()) return;
+    
+    let targetConversationId = activeConversation;
+    
+    // 如果没有活跃对话，创建一个新对话
+    if (!targetConversationId) {
+      const newConversation: Conversation = {
+        id: generateId(),
+        title: input.trim().slice(0, 30),
+        lastMessage: input.trim(),
+        timestamp: new Date().toLocaleString(),
+        messages: [],
+      };
+      setConversations(prevConversations => [newConversation, ...prevConversations]);
+      targetConversationId = newConversation.id;
+      setActiveConversation(targetConversationId);
+    }
     
     const newMessage: Message = { role: "user", content: input.trim() };
     
-    setConversations(conversations.map(conv => {
-      if (conv.id === activeConversation) {
-        return {
-          ...conv,
-          messages: [...conv.messages, newMessage],
-          lastMessage: input.trim(),
-          timestamp: new Date().toLocaleString(),
-          // 如果是第一条消息，将其设置为对话标题
-          title: conv.messages.length === 0 ? input.trim().slice(0, 30) : conv.title
-        };
-      }
-      return conv;
-    }));
+    setConversations(prevConversations => 
+      prevConversations.map(conv => {
+        if (conv.id === targetConversationId) {
+          return {
+            ...conv,
+            messages: [...conv.messages, newMessage],
+            lastMessage: input.trim(),
+            timestamp: new Date().toLocaleString(),
+            // 如果是第一条消息，将其设置为对话标题
+            title: conv.messages.length === 0 ? input.trim().slice(0, 30) : conv.title
+          };
+        }
+        return conv;
+      })
+    );
     
     setInput("");
     
@@ -116,7 +134,7 @@ function AppContent() {
           <div className="flex items-center space-x-2">
             <MessageSquare className="w-6 h-6" />
             <h1 className="text-xl font-bold">
-              {currentConversation?.title || "Tai Chat"}
+              {activeConversation ? (currentConversation?.title || "新对话") : "新对话"}
             </h1>
           </div>
         </header>
