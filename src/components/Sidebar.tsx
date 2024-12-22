@@ -25,6 +25,11 @@ export function Sidebar({
 }: SidebarProps) {
   return (
     <div className="w-64 border-r bg-muted/10 flex flex-col h-full">
+      {/* 软件标题 */}
+      <div className="pt-8 pb-4 px-4 border-b">
+        <h1 className="text-xl font-bold">Tai Chat</h1>
+      </div>
+
       {/* 顶部按钮区域 */}
       <div className="p-4">
         <Button
@@ -59,7 +64,7 @@ export function Sidebar({
       </div>
 
       {/* 底部设置按钮 */}
-      <div className="p-4 border-t">
+      <div className="p-4 border-t mt-auto">
         <Button
           variant="ghost"
           className="w-full justify-start"
