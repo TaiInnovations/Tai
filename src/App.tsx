@@ -185,39 +185,73 @@ function AppContent() {
       const apiMessages = currentConversation?.messages.map(convertToApiMessage) || [];
       apiMessages.push(convertToApiMessage(userMessage));
       
-      const response = await sendMessage(
-        settings.openRouterKey,
-        settings.model,
-        apiMessages
-      );
-
-      const assistantMessage: Message = {
+      // 创建一个初始的 AI 消息
+      const aiMessage: Message = {
         role: "assistant",
-        content: response,
+        content: ""
       };
 
-      // 保存助手消息到数据库
-      await saveMessage({
+      // 保存初始的 AI 消息到数据库
+      const savedMessage = await saveMessage({
         role: 'assistant',
-        content: response,
+        content: "",
         timestamp: new Date(),
         conversationId: targetConversationId
       });
 
-      // 更新对话列表，添加助手消息
+      // 更新对话列表，添加初始的 AI 消息
       setConversations(prevConversations =>
         prevConversations.map(conv => {
           if (conv.id === targetConversationId) {
             return {
               ...conv,
-              messages: [...conv.messages, assistantMessage],
-              lastMessage: response,
+              messages: [...conv.messages, aiMessage],
+              lastMessage: "",
               timestamp: new Date().toLocaleString(),
             };
           }
           return conv;
         })
       );
+
+      // 开始流式接收回复
+      const messageStream = sendMessage(
+        settings.openRouterKey,
+        settings.model,
+        apiMessages
+      );
+
+      let fullContent = "";
+      for await (const chunk of messageStream) {
+        fullContent += chunk;
+        
+        // 更新对话列表，更新 AI 消息的内容
+        setConversations(prevConversations =>
+          prevConversations.map(conv => {
+            if (conv.id === targetConversationId) {
+              const updatedMessages = [...conv.messages];
+              updatedMessages[updatedMessages.length - 1] = {
+                role: "assistant",
+                content: fullContent
+              };
+              return {
+                ...conv,
+                messages: updatedMessages,
+                lastMessage: fullContent,
+                timestamp: new Date().toLocaleString(),
+              };
+            }
+            return conv;
+          })
+        );
+      }
+
+      // 更新数据库中的消息内容
+      if (savedMessage?.id) {
+        await db.messages.update(savedMessage.id, {
+          content: fullContent
+        });
+      }
     } catch (error) {
       console.error('发送消息失败:', error);
       // 显示错误消息给用户
