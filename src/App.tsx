@@ -102,6 +102,24 @@ function AppContent() {
     setActiveConversation(newConversation.id);
   };
 
+  // 删除会话
+  const handleDeleteConversation = async (id: string) => {
+    try {
+      // 从数据库中删除该会话的所有消息
+      await db.messages.where('conversationId').equals(id).delete();
+      
+      // 从状态中移除会话
+      setConversations(conversations.filter(conv => conv.id !== id));
+      
+      // 如果删除的是当前活跃会话，清除活跃会话
+      if (activeConversation === id) {
+        setActiveConversation(undefined);
+      }
+    } catch (error) {
+      console.error('删除会话失败:', error);
+    }
+  };
+
   // 发送消息
   const handleSend = async () => {
     if (!input.trim()) return;
@@ -222,13 +240,14 @@ function AppContent() {
   };
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-screen bg-background text-foreground">
       {/* 侧边栏 */}
       <Sidebar
         conversations={conversations}
         activeConversation={activeConversation}
         onSelectConversation={setActiveConversation}
         onNewChat={handleNewChat}
+        onDeleteConversation={handleDeleteConversation}
         onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
