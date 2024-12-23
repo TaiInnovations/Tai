@@ -5,6 +5,9 @@ import { Sidebar } from "./components/Sidebar";
 import { SettingsDialog, type Settings } from "./components/SettingsDialog";
 import { loadSettings, saveSettings, getDefaultSettings } from "./lib/settings";
 import { ThemeProvider, useTheme } from "./components/ThemeProvider";
+import { sendMessage, convertToApiMessage } from "./lib/api";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import "./App.css";
 
 // 生成唯一ID的辅助函数
@@ -69,34 +72,38 @@ function AppContent() {
     if (!input.trim()) return;
     
     let targetConversationId = activeConversation;
+    let newConversation: Conversation | null = null;
     
     // 如果没有活跃对话，创建一个新对话
     if (!targetConversationId) {
-      const newConversation: Conversation = {
+      newConversation = {
         id: generateId(),
         title: input.trim().slice(0, 30),
         lastMessage: input.trim(),
         timestamp: new Date().toLocaleString(),
         messages: [],
       };
-      setConversations(prevConversations => [newConversation, ...prevConversations]);
+      setConversations(prevConversations => [newConversation!, ...prevConversations]);
       targetConversationId = newConversation.id;
       setActiveConversation(targetConversationId);
     }
     
-    const newMessage: Message = { role: "user", content: input.trim() };
+    const userMessage: Message = { role: "user", content: input.trim() };
+    console.log('发送用户消息:', userMessage);
     
+    // 更新对话列表，添加用户消息
     setConversations(prevConversations => 
       prevConversations.map(conv => {
         if (conv.id === targetConversationId) {
-          return {
+          const updatedConv = {
             ...conv,
-            messages: [...conv.messages, newMessage],
+            messages: [...conv.messages, userMessage],
             lastMessage: input.trim(),
             timestamp: new Date().toLocaleString(),
-            // 如果是第一条消息，将其设置为对话标题
             title: conv.messages.length === 0 ? input.trim().slice(0, 30) : conv.title
           };
+          console.log('更新对话:', updatedConv);
+          return updatedConv;
         }
         return conv;
       })
@@ -104,7 +111,64 @@ function AppContent() {
     
     setInput("");
     
-    // TODO: Add AI response
+    try {
+      // 获取当前对话
+      const currentConv = newConversation || conversations.find(conv => conv.id === targetConversationId);
+      if (!currentConv) {
+        console.error('找不到当前对话:', targetConversationId);
+        return;
+      }
+
+      // 转换消息格式并发送到 API
+      const apiMessages = [...currentConv.messages, userMessage].map(convertToApiMessage);
+      console.log('准备发送到 API 的消息:', apiMessages);
+
+      const response = await sendMessage(
+        settings.openRouterKey,
+        settings.model,
+        apiMessages
+      );
+
+      console.log('收到 API 响应:', response);
+
+      // 添加 AI 的响应
+      const assistantMessage: Message = { role: "assistant", content: response };
+      setConversations(prevConversations =>
+        prevConversations.map(conv => {
+          if (conv.id === targetConversationId) {
+            const updatedConv = {
+              ...conv,
+              messages: [...conv.messages, assistantMessage],
+              lastMessage: response,
+              timestamp: new Date().toLocaleString(),
+            };
+            console.log('添加 AI 响应后的对话:', updatedConv);
+            return updatedConv;
+          }
+          return conv;
+        })
+      );
+    } catch (error) {
+      console.error("发送消息失败:", error);
+      // 添加错误消息
+      const errorMessage: Message = {
+        role: "assistant",
+        content: `错误: ${error instanceof Error ? error.message : '发送消息失败'}`,
+      };
+      setConversations(prevConversations =>
+        prevConversations.map(conv => {
+          if (conv.id === targetConversationId) {
+            return {
+              ...conv,
+              messages: [...conv.messages, errorMessage],
+              lastMessage: errorMessage.content,
+              timestamp: new Date().toLocaleString(),
+            };
+          }
+          return conv;
+        })
+      );
+    }
   };
 
   // 处理设置保存
@@ -155,7 +219,47 @@ function AppContent() {
                     : "bg-muted"
                 }`}
               >
-                {message.content}
+                {message.role === "assistant" ? (
+                  <ReactMarkdown 
+                    remarkPlugins={[remarkGfm]}
+                    className="prose prose-sm dark:prose-invert max-w-none"
+                    components={{
+                      // 自定义代码块样式
+                      code({ node, inline, className, children, ...props }) {
+                        return (
+                          <code
+                            className={`${className} ${
+                              inline
+                                ? 'bg-muted px-1 py-0.5 rounded text-sm'
+                                : 'block bg-muted/50 p-2 rounded-md text-sm overflow-x-auto'
+                            }`}
+                            {...props}
+                          >
+                            {children}
+                          </code>
+                        );
+                      },
+                      // 自定义链接样式
+                      a({ node, children, href, ...props }) {
+                        return (
+                          <a
+                            href={href}
+                            className="text-primary hover:underline"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            {...props}
+                          >
+                            {children}
+                          </a>
+                        );
+                      },
+                    }}
+                  >
+                    {message.content}
+                  </ReactMarkdown>
+                ) : (
+                  message.content
+                )}
               </div>
             </div>
           ))}
