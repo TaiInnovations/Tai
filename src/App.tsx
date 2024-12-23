@@ -390,7 +390,7 @@ function AppContent() {
                     className="prose prose-sm dark:prose-invert max-w-none"
                     components={{
                       // 自定义代码块样式
-                      code({ node, inline, className, children, ...props }) {
+                      code: ({ node, inline, className, children, ...props }: { node: any, inline: boolean, className: string | undefined, children: any, props: any }) => {
                         const match = /language-(\w+)/.exec(className || '');
                         const language = match ? match[1] : '';
                         const codeContent = String(children).replace(/\n$/, '');
