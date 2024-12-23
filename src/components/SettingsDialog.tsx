@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { X, Moon, Sun, Monitor } from "lucide-react";
+import { X, Moon, Sun, Monitor, Eye, EyeOff } from "lucide-react";
 import { Button } from "./ui/button";
 import { useTheme } from "./ThemeProvider";
+import { AVAILABLE_MODELS, type AvailableModel } from "../lib/settings";
 
 interface SettingsDialogProps {
   isOpen: boolean;
@@ -11,8 +12,8 @@ interface SettingsDialogProps {
 }
 
 export interface Settings {
-  openaiKey: string;
-  model: string;
+  openRouterKey: string;
+  model: AvailableModel;
   theme: "light" | "dark" | "system";
 }
 
@@ -23,6 +24,7 @@ export function SettingsDialog({
   initialSettings,
 }: SettingsDialogProps) {
   const [settings, setSettings] = useState<Settings>(initialSettings);
+  const [showKey, setShowKey] = useState(false);
   const { theme, setTheme } = useTheme();
 
   useEffect(() => {
@@ -62,22 +64,35 @@ export function SettingsDialog({
         <div className="flex flex-col gap-4">
           <div className="space-y-2">
             <label
-              htmlFor="openaiKey"
+              htmlFor="openRouterKey"
               className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
             >
-              OpenAI API Key
+              Open Router API Key
             </label>
-            <input
-              id="openaiKey"
-              type="password"
-              value={settings.openaiKey}
-              onChange={(e) =>
-                setSettings({ ...settings, openaiKey: e.target.value })
-              }
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-            />
+            <div className="relative">
+              <input
+                id="openRouterKey"
+                type={showKey ? "text" : "password"}
+                value={settings.openRouterKey}
+                onChange={(e) =>
+                  setSettings({ ...settings, openRouterKey: e.target.value })
+                }
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 pr-10 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              />
+              <button
+                type="button"
+                onClick={() => setShowKey(!showKey)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 focus:outline-none"
+              >
+                {showKey ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </button>
+            </div>
             <p className="text-xs text-muted-foreground">
-              在此输入你的 OpenAI API Key
+              在此输入你的 Open Router API Key
             </p>
           </div>
 
@@ -92,13 +107,15 @@ export function SettingsDialog({
               id="model"
               value={settings.model}
               onChange={(e) =>
-                setSettings({ ...settings, model: e.target.value })
+                setSettings({ ...settings, model: e.target.value as AvailableModel })
               }
               className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <option value="gpt-4">GPT-4</option>
-              <option value="gpt-4-1106-preview">GPT-4 Turbo</option>
-              <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+              {AVAILABLE_MODELS.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
             </select>
             <p className="text-xs text-muted-foreground">
               选择要使用的 AI 模型
@@ -141,13 +158,15 @@ export function SettingsDialog({
               选择应用的主题模式
             </p>
           </div>
-        </div>
 
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose}>
-            取消
-          </Button>
-          <Button onClick={handleSave}>保存</Button>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={onClose}>
+              取消
+            </Button>
+            <Button onClick={handleSave}>
+              保存
+            </Button>
+          </div>
         </div>
       </div>
     </div>

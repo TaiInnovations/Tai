@@ -32,10 +32,21 @@ export async function saveSettings(settings: Settings): Promise<void> {
   }
 }
 
+export const AVAILABLE_MODELS = [
+  "google/gemini-2.0-flash-exp:free",
+  "google/gemini-exp-1206:free",
+  "google/gemini-exp-1121:free",
+  "google/learnlm-1.5-pro-experimental:free",
+  "google/gemini-exp-1114:free",
+  "google/gemini-2.0-flash-thinking-exp:free",
+] as const;
+
+export type AvailableModel = typeof AVAILABLE_MODELS[number];
+
 export function getDefaultSettings(): Settings {
   return {
-    openaiKey: "",
-    model: "gpt-3.5-turbo",
+    openRouterKey: "",
+    model: AVAILABLE_MODELS[0],
     theme: "system",
   };
 }
