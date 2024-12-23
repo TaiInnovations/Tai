@@ -83,16 +83,54 @@ export async function* sendMessage(apiKey: string, model: AvailableModel, messag
       buffer = lines.pop() || '';
 
       for (const line of lines) {
-        if (line.trim() === '') continue;
-        if (line.trim() === 'data: [DONE]') continue;
+        const trimmedLine = line.trim();
+        if (trimmedLine === '') continue;
+        if (trimmedLine === 'data: [DONE]') continue;
+        
+        // 处理特殊的状态消息
+        if (trimmedLine.startsWith(': OPENROUTER')) {
+          console.log('OpenRouter 状态消息:', trimmedLine);
+          continue;
+        }
         
         try {
-          const data = JSON.parse(line.replace(/^data: /, ''));
+          // 移除 'data: ' 前缀，如果有的话
+          const cleanedLine = trimmedLine.startsWith('data: ') ? trimmedLine.slice(6) : trimmedLine;
+          console.log('处理流数据行:', cleanedLine);
+          
+          const data = JSON.parse(cleanedLine);
+          
+          // 检查不同的响应格式
+          let content = '';
           if (data.choices?.[0]?.delta?.content) {
-            yield data.choices[0].delta.content;
+            content = data.choices[0].delta.content;
+          } else if (data.choices?.[0]?.message?.content) {
+            content = data.choices[0].message.content;
+          } else if (typeof data.content === 'string') {
+            content = data.content;
+          }
+          
+          if (content) {
+            console.log('提取到内容:', content);
+            yield content;
           }
         } catch (e) {
-          console.warn('解析流数据失败:', e);
+          // 只记录非特殊消息的解析错误
+          if (!trimmedLine.startsWith(': ')) {
+            console.warn('解析流数据失败:', e, '\n原始数据:', line);
+            // 尝试提取错误消息
+            if (line.includes('error')) {
+              try {
+                const errorStart = line.indexOf('{');
+                if (errorStart !== -1) {
+                  const errorJson = JSON.parse(line.slice(errorStart));
+                  throw new Error(errorJson.error?.message || '未知错误');
+                }
+              } catch (parseError) {
+                console.warn('解析错误消息失败:', parseError);
+              }
+            }
+          }
         }
       }
     }

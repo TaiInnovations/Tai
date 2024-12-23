@@ -6,7 +6,7 @@ import { SettingsDialog, type Settings } from "./components/SettingsDialog";
 import { loadSettings, saveSettings, getDefaultSettings } from "./lib/settings";
 import { ThemeProvider, useTheme } from "./components/ThemeProvider";
 import { sendMessage, convertToApiMessage } from "./lib/api";
-import { db, saveMessage, getMessagesByConversation } from "./lib/db";
+import { db, saveMessage, getMessagesByConversation, updateMessage } from "./lib/db";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import hljs from 'highlight.js';
@@ -52,10 +52,14 @@ function AppContent() {
       try {
         // 从数据库加载所有不同的会话ID
         const messages = await db.messages.toArray();
+        console.log('从数据库加载的消息:', messages);
+        
         const conversationMap = new Map<string, Conversation>();
         
         messages.forEach(msg => {
+          console.log('处理消息:', msg);
           if (!conversationMap.has(msg.conversationId)) {
+            console.log('创建新会话:', msg.conversationId);
             conversationMap.set(msg.conversationId, {
               id: msg.conversationId,
               title: "会话",  // 可以存储第一条消息的前30个字符
@@ -64,13 +68,16 @@ function AppContent() {
               messages: []
             });
           }
-          conversationMap.get(msg.conversationId)!.messages.push({
+          const conversation = conversationMap.get(msg.conversationId)!;
+          conversation.messages.push({
             role: msg.role,
             content: msg.content
           });
+          console.log('更新会话消息:', conversation.messages);
         });
 
         const loadedConversations = Array.from(conversationMap.values());
+        console.log('加载的所有会话:', loadedConversations);
         setConversations(loadedConversations);
       } catch (error) {
         console.error('加载会话失败:', error);
@@ -191,13 +198,27 @@ function AppContent() {
         content: ""
       };
 
+      console.log('准备保存 AI 消息到数据库, conversationId:', targetConversationId);
+      
       // 保存初始的 AI 消息到数据库
-      const savedMessage = await saveMessage({
-        role: 'assistant',
-        content: "",
-        timestamp: new Date(),
-        conversationId: targetConversationId
-      });
+      let savedMessage;
+      try {
+        savedMessage = await saveMessage({
+          role: 'assistant',
+          content: "",
+          timestamp: new Date(),
+          conversationId: targetConversationId
+        });
+        console.log('AI 消息保存成功:', savedMessage);
+      } catch (error) {
+        console.error('保存 AI 消息失败:', error);
+        throw new Error('保存 AI 消息失败');
+      }
+
+      if (!savedMessage?.id) {
+        console.error('保存的消息没有 ID');
+        throw new Error('保存的消息没有 ID');
+      }
 
       // 更新对话列表，添加初始的 AI 消息
       setConversations(prevConversations =>
@@ -214,43 +235,82 @@ function AppContent() {
         })
       );
 
-      // 开始流式接收回复
-      const messageStream = sendMessage(
-        settings.openRouterKey,
-        settings.model,
-        apiMessages
-      );
+      try {
+        console.log('开始接收流式响应...');
+        // 开始流式接收回复
+        const messageStream = sendMessage(
+          settings.openRouterKey,
+          settings.model,
+          apiMessages
+        );
 
-      let fullContent = "";
-      for await (const chunk of messageStream) {
-        fullContent += chunk;
+        let fullContent = "";
+        for await (const chunk of messageStream) {
+          fullContent += chunk;
+          console.log('收到新的内容块，当前总长度:', fullContent.length);
+          
+          // 更新对话列表，更新 AI 消息的内容
+          setConversations(prevConversations =>
+            prevConversations.map(conv => {
+              if (conv.id === targetConversationId) {
+                const updatedMessages = [...conv.messages];
+                updatedMessages[updatedMessages.length - 1] = {
+                  role: "assistant",
+                  content: fullContent
+                };
+                return {
+                  ...conv,
+                  messages: updatedMessages,
+                  lastMessage: fullContent,
+                  timestamp: new Date().toLocaleString(),
+                };
+              }
+              return conv;
+            })
+          );
+        }
+
+        console.log('流式输出完成，准备更新数据库。消息ID:', savedMessage.id, '内容长度:', fullContent.length);
+        // 流式输出完成后，更新数据库中的消息内容
+        try {
+          await updateMessage(savedMessage.id, fullContent);
+          console.log('数据库更新成功');
+        } catch (error) {
+          console.error('更新数据库失败:', error);
+          throw error;
+        }
+      } catch (apiError) {
+        console.error('API 调用失败:', apiError);
+        const errorContent = `错误: ${apiError instanceof Error ? apiError.message : '调用 API 失败'}`;
         
-        // 更新对话列表，更新 AI 消息的内容
+        // 更新对话列表中的错误消息
         setConversations(prevConversations =>
           prevConversations.map(conv => {
             if (conv.id === targetConversationId) {
               const updatedMessages = [...conv.messages];
               updatedMessages[updatedMessages.length - 1] = {
                 role: "assistant",
-                content: fullContent
+                content: errorContent
               };
               return {
                 ...conv,
                 messages: updatedMessages,
-                lastMessage: fullContent,
+                lastMessage: errorContent,
                 timestamp: new Date().toLocaleString(),
               };
             }
             return conv;
           })
         );
-      }
-
-      // 更新数据库中的消息内容
-      if (savedMessage?.id) {
-        await db.messages.update(savedMessage.id, {
-          content: fullContent
-        });
+        
+        // 保存错误消息到数据库
+        if (savedMessage?.id) {
+          try {
+            await updateMessage(savedMessage.id, errorContent);
+          } catch (dbError) {
+            console.error('保存错误消息到数据库失败:', dbError);
+          }
+        }
       }
     } catch (error) {
       console.error('发送消息失败:', error);
