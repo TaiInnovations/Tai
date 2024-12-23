@@ -5,7 +5,7 @@
   "identifier": "com.tai.app",
   "build": {
     "beforeDevCommand": "bun run dev",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://0.0.0.0:1420",
     "beforeBuildCommand": "bun run build",
     "frontendDist": "../dist"
   },
