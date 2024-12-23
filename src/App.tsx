@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "./components/ui/button";
-import { MessageSquare, Send } from "lucide-react";
+import { MessageSquare, Send, Copy, CheckCircle2 } from "lucide-react";
 import { Sidebar } from "./components/Sidebar";
 import { SettingsDialog, type Settings } from "./components/SettingsDialog";
 import { loadSettings, saveSettings, getDefaultSettings } from "./lib/settings";
@@ -9,10 +9,20 @@ import { sendMessage, convertToApiMessage } from "./lib/api";
 import { db, saveMessage, getMessagesByConversation } from "./lib/db";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import hljs from 'highlight.js';
+import 'highlight.js/styles/github-dark.css';
 import "./App.css";
 
 // 生成唯一ID的辅助函数
-const generateId = () => Math.random().toString(36).substr(2, 9);
+const generateId = (str: string) => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(36).slice(0, 8);
+};
 
 interface Message {
   role: string;
@@ -33,6 +43,7 @@ function AppContent() {
   const [input, setInput] = useState("");
   const [settings, setSettings] = useState<Settings>(getDefaultSettings());
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [copiedStates, setCopiedStates] = useState<{[key: string]: boolean}>({});
   const { theme, setTheme } = useTheme();
 
   // 加载所有会话
@@ -92,7 +103,7 @@ function AppContent() {
   // 创建新对话
   const handleNewChat = () => {
     const newConversation: Conversation = {
-      id: generateId(),
+      id: generateId(Math.random().toString(36).substr(2, 9)),
       title: "新对话",
       lastMessage: "",
       timestamp: new Date().toLocaleString(),
@@ -130,7 +141,7 @@ function AppContent() {
     // 如果没有活跃对话，创建一个新对话
     if (!targetConversationId) {
       newConversation = {
-        id: generateId(),
+        id: generateId(Math.random().toString(36).substr(2, 9)),
         title: input.trim().slice(0, 30),
         lastMessage: input.trim(),
         timestamp: new Date().toLocaleString(),
@@ -286,17 +297,79 @@ function AppContent() {
                     components={{
                       // 自定义代码块样式
                       code({ node, inline, className, children, ...props }) {
+                        const match = /language-(\w+)/.exec(className || '');
+                        const language = match ? match[1] : '';
+                        const codeContent = String(children).replace(/\n$/, '');
+
+                        if (inline) {
+                          return (
+                            <code
+                              className="font-mono text-sm text-primary"
+                              {...props}
+                            >
+                              {children}
+                            </code>
+                          );
+                        }
+
+                        let highlightedCode = codeContent;
+                        if (language) {
+                          try {
+                            highlightedCode = hljs.highlight(codeContent, {
+                              language,
+                              ignoreIllegals: true
+                            }).value;
+                          } catch (e) {
+                            console.warn('Failed to highlight:', e);
+                          }
+                        }
+
+                        const [isCopied, setIsCopied] = useState(false);
+
+                        const handleCopy = async (e: React.MouseEvent) => {
+                          e.stopPropagation();
+                          try {
+                            const textArea = document.createElement('textarea');
+                            textArea.value = codeContent;
+                            document.body.appendChild(textArea);
+                            textArea.select();
+                            document.execCommand('copy');
+                            document.body.removeChild(textArea);
+                            
+                            setIsCopied(true);
+                            setTimeout(() => setIsCopied(false), 2000);
+                          } catch (err) {
+                            console.error('复制失败:', err);
+                          }
+                        };
+
                         return (
-                          <code
-                            className={`${className} ${
-                              inline
-                                ? 'bg-muted px-1 py-0.5 rounded text-sm'
-                                : 'block bg-muted/50 p-2 rounded-md text-sm overflow-x-auto'
-                            }`}
-                            {...props}
-                          >
-                            {children}
-                          </code>
+                          <div className="relative group">
+                            <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={handleCopy}
+                                className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-zinc-800/50 hover:bg-zinc-800/80 transition-colors"
+                              >
+                                {isCopied ? (
+                                  <>
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                                    <span className="text-xs text-green-500">已复制</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3.5 h-3.5 text-zinc-400" />
+                                    <span className="text-xs text-zinc-400">复制</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                            <pre className="bg-zinc-900 p-4 rounded-lg overflow-x-auto">
+                              <code
+                                className={`font-mono text-[0.95rem] leading-relaxed hljs ${language}`}
+                                dangerouslySetInnerHTML={{ __html: highlightedCode }}
+                              />
+                            </pre>
+                          </div>
                         );
                       },
                       // 自定义链接样式
