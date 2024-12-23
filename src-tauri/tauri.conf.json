@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "tai",
+  "productName": "Tai",
   "version": "0.1.0",
   "identifier": "com.tai.app",
   "build": {
