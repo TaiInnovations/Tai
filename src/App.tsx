@@ -360,11 +360,16 @@ function AppContent() {
       <div className="flex-1 flex flex-col">
         {/* 顶部标题栏 */}
         <header className="flex items-center justify-between px-4 py-3 border-b">
-          <div className="flex items-center space-x-2">
-            <MessageSquare className="w-6 h-6" />
-            <h1 className="text-xl font-bold">
-              {activeConversation ? (currentConversation?.title || "新对话") : "新对话"}
-            </h1>
+          <div className="flex flex-col">
+            <div className="flex items-center space-x-2">
+              <MessageSquare className="w-6 h-6" />
+              <h1 className="text-xl font-bold">
+                {activeConversation ? (currentConversation?.title || "新对话") : "新对话"}
+              </h1>
+            </div>
+            <div className="text-sm text-gray-500 dark:text-gray-400 ml-8">
+              当前模型：{settings.model}
+            </div>
           </div>
         </header>
 
