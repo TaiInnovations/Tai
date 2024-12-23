@@ -6,6 +6,7 @@ import { SettingsDialog, type Settings } from "./components/SettingsDialog";
 import { loadSettings, saveSettings, getDefaultSettings } from "./lib/settings";
 import { ThemeProvider, useTheme } from "./components/ThemeProvider";
 import { sendMessage, convertToApiMessage } from "./lib/api";
+import { db, saveMessage, getMessagesByConversation } from "./lib/db";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import "./App.css";
@@ -33,6 +34,40 @@ function AppContent() {
   const [settings, setSettings] = useState<Settings>(getDefaultSettings());
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { theme, setTheme } = useTheme();
+
+  // 加载所有会话
+  useEffect(() => {
+    const loadConversations = async () => {
+      try {
+        // 从数据库加载所有不同的会话ID
+        const messages = await db.messages.toArray();
+        const conversationMap = new Map<string, Conversation>();
+        
+        messages.forEach(msg => {
+          if (!conversationMap.has(msg.conversationId)) {
+            conversationMap.set(msg.conversationId, {
+              id: msg.conversationId,
+              title: "会话",  // 可以存储第一条消息的前30个字符
+              lastMessage: msg.content,
+              timestamp: msg.timestamp.toLocaleString(),
+              messages: []
+            });
+          }
+          conversationMap.get(msg.conversationId)!.messages.push({
+            role: msg.role,
+            content: msg.content
+          });
+        });
+
+        const loadedConversations = Array.from(conversationMap.values());
+        setConversations(loadedConversations);
+      } catch (error) {
+        console.error('加载会话失败:', error);
+      }
+    };
+
+    loadConversations();
+  }, []);
 
   // 加载设置
   useEffect(() => {
@@ -91,6 +126,14 @@ function AppContent() {
     const userMessage: Message = { role: "user", content: input.trim() };
     console.log('发送用户消息:', userMessage);
     
+    // 保存用户消息到数据库
+    await saveMessage({
+      role: 'user',
+      content: input.trim(),
+      timestamp: new Date(),
+      conversationId: targetConversationId
+    });
+    
     // 更新对话列表，添加用户消息
     setConversations(prevConversations => 
       prevConversations.map(conv => {
@@ -100,57 +143,55 @@ function AppContent() {
             messages: [...conv.messages, userMessage],
             lastMessage: input.trim(),
             timestamp: new Date().toLocaleString(),
-            title: conv.messages.length === 0 ? input.trim().slice(0, 30) : conv.title
           };
-          console.log('更新对话:', updatedConv);
           return updatedConv;
         }
         return conv;
       })
     );
-    
+
     setInput("");
-    
+
     try {
-      // 获取当前对话
-      const currentConv = newConversation || conversations.find(conv => conv.id === targetConversationId);
-      if (!currentConv) {
-        console.error('找不到当前对话:', targetConversationId);
-        return;
-      }
-
-      // 转换消息格式并发送到 API
-      const apiMessages = [...currentConv.messages, userMessage].map(convertToApiMessage);
-      console.log('准备发送到 API 的消息:', apiMessages);
-
+      const apiMessages = currentConversation?.messages.map(convertToApiMessage) || [];
+      apiMessages.push(convertToApiMessage(userMessage));
+      
       const response = await sendMessage(
         settings.openRouterKey,
         settings.model,
         apiMessages
       );
 
-      console.log('收到 API 响应:', response);
+      const assistantMessage: Message = {
+        role: "assistant",
+        content: response,
+      };
 
-      // 添加 AI 的响应
-      const assistantMessage: Message = { role: "assistant", content: response };
+      // 保存助手消息到数据库
+      await saveMessage({
+        role: 'assistant',
+        content: response,
+        timestamp: new Date(),
+        conversationId: targetConversationId
+      });
+
+      // 更新对话列表，添加助手消息
       setConversations(prevConversations =>
         prevConversations.map(conv => {
           if (conv.id === targetConversationId) {
-            const updatedConv = {
+            return {
               ...conv,
               messages: [...conv.messages, assistantMessage],
               lastMessage: response,
               timestamp: new Date().toLocaleString(),
             };
-            console.log('添加 AI 响应后的对话:', updatedConv);
-            return updatedConv;
           }
           return conv;
         })
       );
     } catch (error) {
-      console.error("发送消息失败:", error);
-      // 添加错误消息
+      console.error('发送消息失败:', error);
+      // 显示错误消息给用户
       const errorMessage: Message = {
         role: "assistant",
         content: `错误: ${error instanceof Error ? error.message : '发送消息失败'}`,
